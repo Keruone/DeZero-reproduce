@@ -1,0 +1,3 @@
+# 忽略测试用代码
+test/
+step/__pycache__/
