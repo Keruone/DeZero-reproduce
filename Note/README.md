@@ -1,7 +1,19 @@
 # DeZero 学习记录
 本文用来记录 复现DeZero 过程中，各种看书第一眼不能理解的、或书中略过的知识。
 
-[toc]
+- [DeZero 学习记录](#dezero-学习记录)
+	- [Step 12: `*`在python的部分作用](#step-12-在python的部分作用)
+	- [step 14: `x.grad += gx` 会导致梯度出问题](#step-14-xgrad--gx-会导致梯度出问题)
+		- [现回顾案发现场：](#现回顾案发现场)
+		- [案件分析：](#案件分析)
+		- [总结](#总结)
+	- [step 15-17: 核心设计：职责分离](#step-15-17-核心设计职责分离)
+		- [1. 为什么要做职责分离？](#1-为什么要做职责分离)
+		- [2. 引入弱链接](#2-引入弱链接)
+	- [step 18: yield与装饰器](#step-18-yield与装饰器)
+		- [1. yield](#1-yield)
+		- [2. @contextlib.contextmanager 装饰器](#2-contextlibcontextmanager-装饰器)
+
 
 ---
 ## Step 12: `*`在python的部分作用
