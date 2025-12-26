@@ -16,7 +16,7 @@ class Variable:
 		"""用于指定父级，即是哪个函数计算得到的它，用于调用反向传播"""
 		self.creator = func
 		self.generation = func.generation + 1
-		#? 为什么不选择在 F.__call__ 中设置generation?
+		#? step15-16: 为什么不选择在 F.__call__ 中设置generation?
 		#! 核心原因：职责分离
 		# 符合“对象自治”原则:
 		# 	Variable 知道“当我被某个函数创建时，我应该怎么做”
