@@ -2,6 +2,7 @@ import numpy as np
 import unittest
 import weakref
 import contextlib
+import dezero
 
 # TODO step32: 实现高阶导数
 # 1. 将grad从数值，转换为 Variable 类型变量 -> 这样导数也可以自己求导
@@ -69,6 +70,21 @@ class Variable:
 	def dtype(self):
 		return self.data.dtype
 
+	@property
+	def T(self):
+		return dezero.functions.transpose(self)
+	
+	def transpose(self):
+		return dezero.functions.transpose(self)
+	
+	def reshape(self, *shape):	# 接收可变参数作为shape
+		if len(shape) == 1 and isinstance(shape[0], (tuple, list)):	# 由于 *shape 无论输入几个参数都会封装为tuple，所以判断要取出元素
+			shape = shape[0]	# 即使只有一个 输入，实际的内容确实 tuple包裹后的元素，所以要提取
+		# 如果多个元素反倒刚刚好由于元组包裹可以不管了，因为多个元素意味着输入的是类似 reshape(2,3) 这样的
+		return dezero.functions.reshape(self, shape)
+	
+	def sum(self, axis = None, keepdims = False):
+		return dezero.functions.sum(self, axis, keepdims)
 	def __len__(self):
 		return len(self.data)
 	
@@ -76,8 +92,8 @@ class Variable:
 		if self.data is None:
 			return 'Variable(None)'
 		p = str(self.data).replace('\n', '\n' + ' ' * 9)
-		return 'Variable(' + p + ')'
-
+		return 'Variable(' + p + ')\n'
+	
 	def set_creator(self, func):	
 		"""用于指定父级，即是哪个函数计算得到的它，用于调用反向传播"""
 		self.creator = func
@@ -93,7 +109,7 @@ class Variable:
 	
 	def clear_grad(self):
 		self.grad = None
-		
+
 	def backward(self,retain_grad = False, create_graph = False):		# step 18: 只保留端侧数据的梯度，以减少memory使用
 		"使用循环的方式实现 backward"
 		if self.grad is None:
@@ -187,11 +203,16 @@ class Function:
 
 class Add(Function):
 	def forward(self, x0, x1):	# 修改以更符合常人阅读习惯
+		self.x0_shape, self.x1_shape = x0.shape, x1.shape	# step 40: 记录，用于矩阵的广播加法时候的反向传播
 		y = x0 + x1
 		return y
 
 	def backward(self, gy):
-		return gy, gy
+		gx0, gx1 = gy, gy
+		if self.x0_shape != self.x1_shape:
+			gx0 = dezero.functions.sum_to(gx0, self.x0_shape)
+			gx1 = dezero.functions.sum_to(gx1, self.x1_shape)
+		return gx0, gx1
 
 def add(x0, x1):
 	# x0 一般是调用add的var变量，x1可能是任何支持的变量

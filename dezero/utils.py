@@ -61,3 +61,57 @@ def plot_dot_graph(output, verbose=True, to_file='graph.png'):
 	extension = os.path.splitext(to_file)[1][1:]
 	cmd = 'dot {} -T {} -o {}'.format(graph_path, extension, to_file)
 	subprocess.run(cmd, shell=True)
+
+def sum_to(x, shape):
+    """Sum elements along axes to output an array of a given shape.
+
+    Args:
+        x (ndarray): Input array.
+        shape:
+
+    Returns:
+        ndarray: Output array of the shape.
+    """
+	#! NumPy 的广播总是从右向左对齐维度，只在左侧（前面）补充大小为 1 的维度，且仅当对应维度相等或其中一方为 1 时才能广播，不能在右侧（末尾）新增维度。
+    ndim = len(shape)
+    lead = x.ndim - ndim
+	# lead = x.ndim - ndim 只能表示“前面多出来的维度”，不能处理“后面多出来的维度”。这是因为 NumPy 的广播规则是从后往前对齐维度的，而该函数的设计正是基于这一规则。
+
+    lead_axis = tuple(range(lead))
+
+    axis = tuple([i + lead for i, sx in enumerate(shape) if sx == 1])
+    y = x.sum(lead_axis + axis, keepdims=True)	# 只向压缩掉的维度和为1的维度进行sum求和
+    if lead > 0:
+        y = y.squeeze(lead_axis)				# 将lead的维度删除掉，比如 shape(1,2,3)->(squeeze)->(2,3)
+    return y
+
+def reshape_sum_backward(gy, x_shape, axis, keepdims):
+    """Reshape gradient appropriately for dezero.functions.sum's backward.
+
+    Args:
+        gy (dezero.Variable): Gradient variable from the output by backprop.
+        x_shape (tuple): Shape used at sum function's forward.
+        axis (None or int or tuple of ints): Axis used at sum function's
+            forward.
+        keepdims (bool): Keepdims used at sum function's forward.
+
+    Returns:
+        dezero.Variable: Gradient variable which is reshaped appropriately
+    """
+    ndim = len(x_shape)
+    tupled_axis = axis
+    if axis is None:
+        tupled_axis = None
+    elif not isinstance(axis, tuple):
+        tupled_axis = (axis,)
+
+    if not (ndim == 0 or tupled_axis is None or keepdims):
+        actual_axis = [a if a >= 0 else a + ndim for a in tupled_axis]
+        shape = list(gy.shape)
+        for a in sorted(actual_axis):
+            shape.insert(a, 1)
+    else:
+        shape = gy.shape
+
+    gy = gy.reshape(shape)  # reshape
+    return gy
