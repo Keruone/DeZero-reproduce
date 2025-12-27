@@ -254,6 +254,24 @@ def rdiv(x0, x1):
 	x1 = as_array(x1)
 	return Div()(x1, x0)
 
+class Pow(Function):
+	def forward(self, x0, x1): 	# x0^x1
+		return x0**x1
+	
+	def backward(self, gy):
+		x0, x1 = self.inputs				## step 32.2 : 将运算从 数值运算 更改为 Variable 运算
+		gx0 = x1 * (x0 ** (x1 - 1)) * gy
+		gx1 = (x0**x1) * log(x0) * gy		#! 其实这里有个隐藏问题，对于 x0<0 log没意义，会nan。
+		return gx0, gx1
+
+def pow(x0, x1):
+	x1 = as_array(x1)
+	return Pow()(x0, x1)
+
+def rpow(x0, x1):
+	x1 = as_array(x1)
+	return Pow()(x1, x0)
+
 class Log(Function):
 	def forward(self, x):
 		if np.any(x<=0):
@@ -263,7 +281,7 @@ class Log(Function):
 	def backward(self, gy):
 		x, = self.inputs	# 一定要加", "，不然会给当作list处理
 		return gy / x
-
+	
 class Log_base(Function):
 	def forward(self, base, x):
 		if np.any(base<=0) or np.any(base==1):
@@ -277,7 +295,7 @@ class Log_base(Function):
 		gx = 1 / (x * Log()(base)) * gy
 		gbase = -Log()(x) / ((Log()(base))**2) * gy
 		return gbase, gx
-
+	
 def log(x, base = None):
 	"""通用对数函数
     - 单参数: log(x) → 自然对数ln(x)
@@ -288,25 +306,6 @@ def log(x, base = None):
 	else:
 		base = as_array(base)
 		return Log_base()(base, x)
-
-class Pow(Function):
-	def forward(self, x0, x1): 	# x0^x1
-		return x0**x1
-	
-	def backward(self, gy):
-		x0, x1 = self.inputs				## step 32.2 : 将运算从 数值运算 更改为 Variable 运算
-		gx0 = x1 * (x0 ** (x1 - 1)) * gy
-		gx1 = (x0**x1) * np.log(x0) * gy		#! 其实这里有个隐藏问题，对于 x0<0 log没意义，会nan。
-		return gx0, gx1
-
-def pow(x0, x1):
-	x1 = as_array(x1)
-	return Pow()(x0, x1)
-
-def rpow(x0, x1):
-	x1 = as_array(x1)
-	return Pow()(x1, x0)
-
 
 def setup_variable():
 	Variable.__add__ = add
@@ -320,4 +319,3 @@ def setup_variable():
 	Variable.__rtruediv__ = rdiv
 	Variable.__pow__ = pow
 	Variable.__rpow__ = rpow
-	Variable.log = log

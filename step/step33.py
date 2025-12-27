@@ -19,18 +19,6 @@ from dezero.utils import plot_dot_graph
 # gx.backward()
 # print(x.grad)
 
-
-# x = Variable(np.array(2))
-# y = Variable.log(x, base = 10)
-# print(y)
-# y.backward(create_graph = True)
-# print(x.grad)
-# gx = x.grad
-# x.clear_grad()
-# gx.backward()
-# print(x.grad)
-
-
 def f(x):
 	y = x ** 4 - 2 * x ** 2
 	return y
