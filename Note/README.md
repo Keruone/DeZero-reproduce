@@ -13,6 +13,12 @@
 	- [step 18: yield与装饰器](#step-18-yield与装饰器)
 		- [1. yield](#1-yield)
 		- [2. @contextlib.contextmanager 装饰器](#2-contextlibcontextmanager-装饰器)
+	- [Step 39: 书中未讲明的 utils.reshape\_sum\_backward() 函数分析](#step-39-书中未讲明的-utilsreshape_sum_backward-函数分析)
+		- [1. 使用的场景](#1-使用的场景)
+		- [2. 函数的具体分析](#2-函数的具体分析)
+	- [Step 40: 书中未讲明的 utils.sum\_to 函数分析](#step-40-书中未讲明的-utilssum_to-函数分析)
+		- [1. 你应该知道的 numpy 广播特点](#1-你应该知道的-numpy-广播特点)
+		- [2. 具体函数分析](#2-具体函数分析)
 
 
 ---
@@ -187,5 +193,241 @@
    - 这个装饰器是 “桥梁”，把一个带 yield 的普通函数，转换成能被 with 调用的上下文管理器：
      - 通过 yield 分割 “进入上下文” 和 “退出上下文” 的逻辑。
    - 用 with 调用时，装饰器生成的wrapper会自动处理：执行yield前逻辑 → 暂停（执行with块内代码）→ 执行yield后逻辑
+
+---
+## Step 39: 书中未讲明的 utils.reshape_sum_backward() 函数分析
+### 1. 使用的场景
+首先，我们先来看看函数调用的地方和使用的背景：
+```python
+class Sum(Function):
+	def __init__(self, axis, keepdims):
+		self.axis = axis
+		self.keepdims = keepdims
+	
+	def forward(self, x):
+		self.x_shape = x.shape
+		return x.sum(axis = self.axis, keepdims = self.keepdims)	# 这里其实是 np.sum()
+	
+	def backward(self, gy):
+		gy = utils.reshape_sum_backward(gy, self.x_shape, self.axis, self.keepdims) 	# 因为使用 axis 和 keepdims 会出现改变梯度形状的情况，所以要修正
+		return broadcast_to(gy, self.x_shape)
+
+def sum(x, axis = None, keepdims = False):
+	return Sum(axis, keepdims)(x)
+```
+关于使用的原因，书中的原文如下。一言以蔽之，即 ***形状前后有变化，需要调整***。
+> 在反向传播的实现中，我们在 broadcast_to 函数之前使用了 utils.reshape_sum_backward 函数。这个函数会对 gy 的形状稍加调整（因为使用 axis 和 keepdims 求和时会出现改变梯队形状的情况）。
+
+### 2. 函数的具体分析
+调用的函数代码如下
+```python
+def reshape_sum_backward(gy, x_shape, axis, keepdims):
+    """Reshape gradient appropriately for dezero.functions.sum's backward.
+
+    Args:
+        gy (dezero.Variable): Gradient variable from the output by backprop.
+        x_shape (tuple): Shape used at sum function's forward.
+        axis (None or int or tuple of ints): Axis used at sum function's
+            forward.
+        keepdims (bool): Keepdims used at sum function's forward.
+
+    Returns:
+        dezero.Variable: Gradient variable which is reshaped appropriately
+    """
+    ndim = len(x_shape)
+    tupled_axis = axis
+    if axis is None:
+        tupled_axis = None
+    elif not isinstance(axis, tuple):
+        tupled_axis = (axis,)
+
+    if not (ndim == 0 or tupled_axis is None or keepdims):
+        actual_axis = [a if a >= 0 else a + ndim for a in tupled_axis]
+        shape = list(gy.shape)
+        for a in sorted(actual_axis):
+            shape.insert(a, 1)
+    else:
+        shape = gy.shape
+
+    gy = gy.reshape(shape)  # reshape
+    return gy
+```
+- 变量初始化与轴的标准化
+	```python
+	ndim = len(x_shape)  				# 获取原输入x的维度数（比如x_shape=(2,3)，ndim=2）
+	tupled_axis = axis
+	if axis is None:
+		tupled_axis = None 				# axis=None表示对所有元素求和（比如(2,3)→()）
+	elif not isinstance(axis, tuple):
+		tupled_axis = (axis,)  			# 把单个轴（如axis=1）转成元组(1,)，统一处理格式
+	```
+	- 目的：把各种形式的 axis（None / 单个 int / 元组）统一成 “None 或元组” 的格式，方便后续处理。
+	- 举例：
+		- 输入 axis=0 → 转成 (0,)
+		- 输入 axis=(0,1) → 保持不变
+		- 输入 axis=None → 保持 None
+- 核心逻辑：判断是否需要插入维度
+	```python
+	if not (ndim == 0 or tupled_axis is None or keepdims):
+		# 情况1：需要插入维度（最常见的场景）
+		actual_axis = [a if a >= 0 else a + ndim for a in tupled_axis]
+		shape = list(gy.shape)			# 转换为列表
+		for a in sorted(actual_axis):
+			shape.insert(a, 1)			
+			# insert 是 Python 列表（list）的内置方法 
+			# 语法：`列表.insert(索引位置, 要插入的元素)`
+			# 作用：在指定索引位置插入一个元素，原位置及之后的元素会自动向后移一位；
+	else:
+		# 情况2：不需要插入维度
+		shape = gy.shape
+	```
+	- 判断条件 not (ndim == 0 or tupled_axis is None or keepdims)：
+      - ndim == 0：原输入 x 是标量（shape=()），无需重塑。
+      - tupled_axis is None：sum 时对所有维度求和（比如 x 是 (2,3)，sum 后是标量），gy 已是标量，无需重塑
+      - keepdims=True：sum 时保留了维度（比如 (2,3) 沿 axis=1 sum 后是 (2,1)），gy 形状已匹配，无需插入 1
+      - 只有以上都不满足时，才需要给 gy 插入维度 1
+      - 即 **不是标量** 并且 **指定了axis** 并且 **没有开启keepdims**
+    - if 框体解释
+      - actual_axis：处理负轴（比如 axis=-1，ndim=2 → 实际是 axis=1），转成非负索引，避免越界。
+      - shape.insert(a, 1)：在指定轴的位置插入 1，把 gy 的形状还原成 “压缩前的维度（只是压缩轴变成 1）”。
+    - 作用：综上，将选定的求和导致被压缩掉的axis维度给他还原出来（在该维度尺寸设置为1即可），以便于广播
+    - 举例：
+      - 正向传播：x.shape=(2,3)，sum (axis=1) → 输出 shape=(2,)，keepdims=False
+      - 反向传播：gy.shape=(2,)
+        - actual_axis = [1]（axis=1 是正索引，无需转换）
+        - shape 初始是 [2]
+        - 对 sorted 后的 axis=1 执行 insert (1,1) → shape 变成 [2,1]
+        - 最终 gy.reshape ([2,1])，后续广播就能还原成 (2,3)
+- 执行重塑并返回
+	```python
+	gy = gy.reshape(shape)  # 把gy重塑成计算好的shape
+	return gy
+	```
+	- 把 gy 的形状调整为插入了 1 的维度，为后续的广播（反向传播的梯度累加）做准备。
+
+---
+## Step 40: 书中未讲明的 utils.sum_to 函数分析
+```python
+def sum_to(x, shape):
+    """Sum elements along axes to output an array of a given shape.
+
+    Args:
+        x (ndarray): Input array.
+        shape:
+
+    Returns:
+        ndarray: Output array of the shape.
+    """
+	#! NumPy 的广播总是从右向左对齐维度，只在左侧（前面）补充大小为 1 的维度，且仅当对应维度相等或其中一方为 1 时才能广播，不能在右侧（末尾）新增维度。
+    ndim = len(shape)
+    lead = x.ndim - ndim
+	# lead = x.ndim - ndim 只能表示“前面多出来的维度”，不能处理“后面多出来的维度”。这是因为 NumPy 的广播规则是从后往前对齐维度的，而该函数的设计正是基于这一规则。
+
+    lead_axis = tuple(range(lead))
+
+    axis = tuple([i + lead for i, sx in enumerate(shape) if sx == 1])
+    y = x.sum(lead_axis + axis, keepdims=True)	# 只向压缩掉的维度和为1的维度进行sum求和
+    if lead > 0:
+        y = y.squeeze(lead_axis)				# 将lead的维度删除掉，比如 shape(1,2,3)->(squeeze)->(2,3)
+    return y
+```
+### 1. 你应该知道的 numpy 广播特点
+NumPy 的广播总是**从右向左对齐维度**，只在**左侧（前面）补充大小为 1 的维度**，且**仅当** **对应维度相等或其中一方为 1 时**才能广播，不能在右侧（末尾）新增维度。
+- 正例：
+	```python
+	import numpy as np
+
+	a = np.ones((3,))        # shape: (3,)
+	b = np.ones((2, 4, 3))   # shape: (2, 4, 3)
+
+	# a 会被广播为 (1, 1, 3) → 再广播为 (2, 4, 3)
+	c = a + b
+	print(c.shape)  # 输出: (2, 4, 3)
+	```
+	为什么合法？
+    - NumPy 将 a.shape = (3,) 在左侧补 1 → (1, 1, 3)（符合“只在左侧补充维度”）；
+    - 从右向左对齐：
+      - 第 -1 维：3 vs 3 → 相等 ✅
+      - 第 -2 维：1 vs 4 → 有 1 ✅
+      - 第 -3 维：1 vs 2 → 有 1 ✅
+      - 没有在末尾新增维度（a 的 3 在最右边，和 b 的 3 对齐）✅
+- 负例1：
+	```python
+	import numpy as np
+
+	a = np.ones((2, 3))      # shape: (2, 3)
+	b = np.ones((2, 3, 4))   # shape: (2, 3, 4)
+
+	# 尝试运算会报错！
+	c = a + b  # ❌ ValueError!
+	```
+	为什么失败？
+    - a.shape = (2, 3) 需要和 (2, 3, 4) 对齐；
+    - NumPy 在左侧补 1：a → (1, 2, 3)；
+    - 从右向左对齐比较：
+      - 第 -1 维：3 vs 4 → 既不相等，也没有 1 ❌（后面的维度不用看了，已经失败）
+- 负例2：
+	```python
+	import numpy as np
+
+	a = np.ones((2, 4))      # shape: (2, 4)
+	b = np.ones((2, 3, 4))   # shape: (2, 3, 4)
+
+	# 尝试运算会报错！
+	c = a + b  # ❌ ValueError!
+	```
+	为什么失败？
+    - NumPy 将 a.shape = (2, 4) 在左侧补 1 → 变为 (1, 2, 4)
+    - 从右向左对齐比较：
+      - 第 -1 维：4 vs 4 → ✅ 相等
+      - 第 -2 维：2 vs 3 → ❌ 既不相等，也没有 1
+      - 第 -3 维：1 vs 2 → ✅ 有 1
+    - 由于第 -2 维冲突，广播失败。
+
+### 2. 具体函数分析
+sum_to(x, shape) 的核心目标是：将通过广播扩展得到的数组 x，还原（压缩）回其原始形状 shape。这在反向传播中非常关键——当一个较小的张量参与前向计算并被广播成更大的张量时，其梯度会以更大形状返回；我们需要将这些梯度“聚合”回原始的小形状，而 sum_to 正是完成这一聚合操作的工具。
+
+接下来函数逻辑逐行解析
+```python
+ndim = len(shape)
+lead = x.ndim - ndim
+```
+- 关键假设：这些多出的维度一定在最前面（因为广播只在左侧补维）。*就是我前文叫你了解的内容嗷
+- ndim：目标形状的维度数。
+- lead：输入 x 比目标多出的维度数量。
+
+```python
+ndim = len(shape)
+lead = x.ndim - ndim
+```
+- lead_axis = tuple(range(lead))
+
+```python
+axis = tuple([i + lead for i, sx in enumerate(shape) if sx == 1])	# sx 是 sum_to 函数列表推导式中的临时变量，代表目标形状第 i 轴的尺寸值
+```
+- 遍历目标 shape，找出所有值为 1 的维度位置 i；
+- 将其映射回 x 中的实际轴索引：i + lead（因为前面多了 lead 个维度）；
+- 这些轴在前向传播中原本是 1，被广播成了更大的值（如 1 → 5），因此在反向传播中需要沿这些轴求和，把梯度“收回来”。
+- 拆解成循环可能更好理解
+	```python
+	axis = []
+	# 遍历目标形状 shape，i 是轴索引，sx 是该轴的尺寸值
+	for i, sx in enumerate(shape):
+		if sx == 1:  # 只关注目标形状中尺寸为1的轴
+			axis.append(i + lead)
+	axis = tuple(axis)
+	```
+
+```python
+y = x.sum(lead_axis + axis, keepdims=True)
+```
+- 同时对 前导维度 和 原为 1 的维度 求和；
+- keepdims=True 保证求和后这些维度仍保留为大小 1，便于后续形状调整。
+
+```python
+if lead > 0:
+    y = y.squeeze(lead_axis)
+```
+- 删除前导维度（它们已经是大小为 1），使最终形状严格等于 shape。
 
 ---
