@@ -5,7 +5,7 @@ def _dot_var(v, verbose = False):
 	dot_var = '{} [label="{}", color=orange, style=filled]\n'
 	name = '' if v.name is None else v.name
 	if verbose:
-		if name is not '':
+		if name != '':
 			name += ': '
 		name += str(v.shape) + ' ' + str(v.dtype)
 	return dot_var.format(id(v), name)
