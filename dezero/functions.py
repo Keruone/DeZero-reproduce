@@ -136,3 +136,29 @@ def sum_to(x, shape):
 	# if x.shape == shape:		# step38: 	这两步正向传播时不会有影响，但是反向传播因为是直接变成 Variable 类型变量的，
 	# 	return as_variable(x)	# 			并没有调用 Function 的 __call__所以会没有 creator，导致反向传播出错
 	return SumTo(shape)(x)
+
+
+class MatMul(Function):
+	def forward(self, x, W):
+		return np.dot(x,W)
+	
+	def backward(self, gy):
+		x,W = self.inputs
+		gx = matmul(gy, W.T)
+		gW = matmul(x.T, gy)
+		return gx, gW
+def matmul(x, W):
+	return MatMul()(x,W)
+
+class MeanSquaredError(Function):
+	def forward(self, x0, x1):
+		diff = x0 - x1
+		y = (diff**2).sum() / len(diff.size)		
+		return y
+	def backward(self, gy):
+		x0, x1 = self.inputs
+		gx0 = 2 * gy * (x0 - x1) / len(x0.size)
+		gx1 = -gx0
+		return gx0, gx1
+def mean_squared_error(x0, x1):
+	return MeanSquaredError()(x0, x1)
