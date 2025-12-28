@@ -22,6 +22,11 @@
 	- [Step 44: `super()` 以及 `__setattr__`](#step-44-super-以及-__setattr__)
 		- [1. `super()`](#1-super)
 		- [2. `__setattr__` 即其赋值语法](#2-__setattr__-即其赋值语法)
+	- [Step 48: 复现时遇到的问题](#step-48-复现时遇到的问题)
+		- [1. 需要参考附录B实现 get\_item](#1-需要参考附录b实现-get_item)
+		- [2. 需要在utils中补充代码：](#2-需要在utils中补充代码)
+		- [3. function 中补充的代码：](#3-function-中补充的代码)
+		- [4. `t.ravel()`](#4-travel)
 
 
 ---
@@ -466,5 +471,52 @@ layer.p2 = Parameter(np.array(1))
 > ⚠️ 小心陷阱：在自定义 `__setattr__` 方法内部，**不要直接写** self.attr = value，否则会再次触发 `__setattr__`，导致无限递归！正确做法是使用 `super().__setattr__(name, value)` 或直接操作 `self.__dict__`。
 > 
 > *`self.__dict__` 是 Python 中每个对象实例（instance）自带的一个字典（dictionary）属性，用于存储该实例的所有可变属性（instance attributes）。*
+
+---
+## Step 48: 复现时遇到的问题
+在 四十来步 复刻的时候明显会感到不舒服许多，因为很多代码互相嵌套，但是书中没有提及什么时候具体实现的。
+### 1. 需要参考附录B实现 get_item
+具体内容参考附录B。但是注意，实现后记得添加如下代码到 `def setup_variable()`，不然你无法像np一样使用类似x[0]的方式来获取数组内容：
+```python
+	Variable.__getitem__ = dezero.functions.get_item
+```
+### 2. 需要在utils中补充代码：
+随书附赠的代码已经是最终版本的，包含cupy等。但按照进度来说，此处还不应该用到，所以进行如下修改
+```python
+def logsumexp(x, axis=1):
+	# 源码做过防止溢出的修改
+    m = x.max(axis=axis, keepdims=True)
+    y = x - m
+    np.exp(y, out=y)
+    s = y.sum(axis=axis, keepdims=True)
+    np.log(s, out=s)
+    m += s
+    return m
+```
+### 3. function 中补充的代码：
+用于限制数值范围的代码
+```python
+class Clip(Function):
+    def __init__(self, x_min, x_max):
+        self.x_min = x_min
+        self.x_max = x_max
+
+    def forward(self, x):
+        y = np.clip(x, self.x_min, self.x_max)	# np.clip 将数组的所有元素限制在 [min, max] 区间内
+        return y
+
+    def backward(self, gy):
+        x, = self.inputs
+        mask = (x.data >= self.x_min) * (x.data <= self.x_max)
+        gx = gy * mask
+        return gx
+def clip(x, x_min, x_max):
+    return Clip(x_min, x_max)(x)
+```
+
+### 4. `t.ravel()`
+`t.ravel()` 是 NumPy 中一个非常常用的方法，用于将任意形状的数组展平（flatten）成一维数组，且尽可能不复制数据。
+- 当你写 b = a.ravel()，NumPy 并没有把 a 的每个元素再存一遍
+- 它只是创建了一个新的“数组对象”，但底层数据指针仍然指向 a 的内存
 
 ---

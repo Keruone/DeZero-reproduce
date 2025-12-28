@@ -161,19 +161,6 @@ class MatMul(Function):
 def matmul(x, W):
 	return MatMul()(x,W)
 
-class MeanSquaredError(Function):
-	def forward(self, x0, x1):
-		diff = x0 - x1
-		y = (diff**2).sum() / diff.size		
-		return y
-	def backward(self, gy):
-		x0, x1 = self.inputs
-		gx0 = 2 * gy * (x0 - x1) / x0.size
-		gx1 = -gx0
-		return gx0, gx1
-def mean_squared_error(x0, x1):
-	return MeanSquaredError()(x0, x1)
-
 class Linear(Function):
 	def forward(self, x, W, b):
 		y = x.dot(W)
@@ -217,3 +204,115 @@ def sigmoid_simple(x):
 	y = 1 / (1 + exp(-x))
 	return y
 
+class GetItem(Function):
+	def __init__(self, slices):	# 切片参数 需要是 list 或者 np.ndarray 
+		self.slices = slices
+	def forward(self, x):
+		y = x[self.slices]		# np.ndarray 的奇特小特性，可以自己在python中试一试
+		return y
+	def backward(self, gy):
+		x, = self.inputs
+		f = GetItemGrad(self.slices, x.shape)
+		gx = f(gy)
+		return gx
+
+def get_item(x, slices):
+	return GetItem(slices)(x)
+
+class GetItemGrad(Function):
+	def __init__(self, slices, x_shape):
+		self.slices = slices
+		self.x_shape = x_shape
+	def forward(self, gy):	# 前向传播处理的都是numpy的数据
+		gx = np.zeros(self.x_shape)
+		np.add.at(gx, self.slices, gy)	# 原地（in-place）按索引批量累加 #* np.add.at() 是 NumPy 的 add ufunc（通用函数）的原子化原地累加方法，核心作用是：根据指定的索引（slices），把 gy 的值原地累加到 gx 对应的位置上（支持重复索引，重复索引会多次累加，而非覆盖）。
+		return gx
+	def backward(self, x):
+		return get_item(x, self.slices)
+
+class Softmax(Function):
+	def __init__(self, axis):
+		self.axis = axis
+	def forward(self, x):
+		y = np.exp(x)
+		sum_y = y.sum(axis = self.axis, keepdims=True)
+		return y / sum_y
+	def backward(self, gy):
+		y = self.outputs[0]()
+		gx = y * gy
+		sumdx = gx.sum(axis=self.axis, keepdims=True)
+		gx -= y * sumdx
+		return gx
+def softmax(x, axis = 1):
+	return Softmax(axis=axis)(x)
+
+def softmax_simple(x, axis=1):
+	x = as_variable(x)
+	y = exp(x)
+	sum_y = sum(x, axis=axis, keepdims=True)
+	return y / sum_y
+
+class Clip(Function):
+    def __init__(self, x_min, x_max):
+        self.x_min = x_min
+        self.x_max = x_max
+
+    def forward(self, x):
+        y = np.clip(x, self.x_min, self.x_max)	# np.clip 将数组的所有元素限制在 [min, max] 区间内
+        return y
+
+    def backward(self, gy):
+        x, = self.inputs
+        mask = (x.data >= self.x_min) * (x.data <= self.x_max)
+        gx = gy * mask
+        return gx
+
+
+def clip(x, x_min, x_max):
+    return Clip(x_min, x_max)(x)
+
+#*========================
+#*		Loss Func
+#*========================
+
+class MeanSquaredError(Function):
+	def forward(self, x0, x1):
+		diff = x0 - x1
+		y = (diff**2).sum() / diff.size		
+		return y
+	def backward(self, gy):
+		x0, x1 = self.inputs
+		gx0 = 2 * gy * (x0 - x1) / x0.size
+		gx1 = -gx0
+		return gx0, gx1
+def mean_squared_error(x0, x1):
+	return MeanSquaredError()(x0, x1)
+
+def softmax_cross_entropy_simple(x, t):	# 此处t不是one-hot
+	x, t = as_variable(x), as_variable(t)
+	N = x.shape[0]
+	p = softmax(x)
+	# print(type(p.data))
+	p = clip(p, 1e-15, 1.0)  # To avoid log(0)
+	log_p = log(p)
+	tlog_p = log_p[np.arange(N), t.data]
+	y = -1 * sum(tlog_p) / N
+	return y
+
+class SoftmaxCrossEntropy(Function):
+	def forward(self, x, t):
+		N = x.shape[0]
+		log_z = utils.logsumexp(x, axis=1)	# 计算呢 log(sum(exp(x))), 即公式的分母
+		log_p = x - log_z					# 分子先exp再log等于本身，然后使用log(a/b) = loga - logb
+		log_p = log_p[np.arange(N), t.ravel()]
+		y = -log_p.sum() / np.float32(N)
+		return y
+	def backward(self, gy):
+		x, t = self.inputs
+		N, CLS_NUM = x.shape
+		t_onehot = np.eye(CLS_NUM, dtype=t.dtype)[t.data]	# 跟前文get_item 同样的特性
+		y = softmax(x)
+		gx = (y - t_onehot) / N
+		return gx
+def softmax_cross_entropy(x, t):
+	return SoftmaxCrossEntropy()(x, t)
