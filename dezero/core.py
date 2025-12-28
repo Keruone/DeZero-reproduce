@@ -145,6 +145,8 @@ class Variable:
 						for output in f.outputs:
 							output().grad = None	# step 18 如果需要梯度就删除
 
+class Parameter(Variable):
+	pass
 
 def as_array(x):		# 处理标量为 np.ndarray 类型 #step 21 标量要先经过 as_array() 再经过 as_variable()
 	if np.isscalar(x):

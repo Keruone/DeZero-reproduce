@@ -19,6 +19,9 @@
 	- [Step 40: 书中未讲明的 utils.sum\_to 函数分析](#step-40-书中未讲明的-utilssum_to-函数分析)
 		- [1. 你应该知道的 numpy 广播特点](#1-你应该知道的-numpy-广播特点)
 		- [2. 具体函数分析](#2-具体函数分析)
+	- [Step 44: `super()` 以及 `__setattr__`](#step-44-super-以及-__setattr__)
+		- [1. `super()`](#1-super)
+		- [2. `__setattr__` 即其赋值语法](#2-__setattr__-即其赋值语法)
 
 
 ---
@@ -429,5 +432,39 @@ if lead > 0:
     y = y.squeeze(lead_axis)
 ```
 - 删除前导维度（它们已经是大小为 1），使最终形状严格等于 shape。
+
+---
+## Step 44: `super()` 以及 `__setattr__`
+
+### 1. `super()`
+`super()`是python调用父类的某一个函数的办法。如你在子类和父类都同时定义了 foo 函数，但是用法略有不同，你在子类中希望实现新功能的同时，也有父类的功能，你有不像整个重写一遍父类的功能。这个时候，你就可以在子类中调用父类的foo来实现。
+```python
+class Parent:
+    def foo(self, x):
+        print("Parent foo:", x)
+
+class Child(Parent):
+    def foo(self, x, y):
+        super().foo(x)  # 调用父类的 foo
+        print("Child extra:", y)
+```
+不过注意：即使你的类看起来没有显式继承任何类（如 class MyClass:），它实际上仍然隐式继承自 object。因此，当你在自定义类中写 `super().__setattr__(name, value)` 时，最终会调用 object 类的默认 `__setattr__` 方法。
+
+### 2. `__setattr__` 即其赋值语法
+当你看完书中的代码时，可能又会对以下的内容产生困惑：
+```python
+layer = Layer()
+layer.p1 = Parameter(np.array(1))
+layer.p2 = Parameter(np.array(1))
+```
+你可能会疑惑：这是在做什么？
+- 这是在**动态地为实例添加属性**（注意：是实例，不是类！）。
+- 每次执行 `obj.attr = value`，Python 都会自动调用 `obj.__setattr__('attr', value)`。
+> 子类的效果书中已经讲的比较清楚了，我这里就简单讲讲父类的[`object`类]的 `__setattr__` 方法）
+- 语法：实例.属性名=属性值
+- 效果：给当前**实例**（*注意，是实例，不是类！*）添加一个新的`属性`，该`属性`的名称记作 `传入的参数name`，该属性的数值赋值为`传入的参数value`
+> ⚠️ 小心陷阱：在自定义 `__setattr__` 方法内部，**不要直接写** self.attr = value，否则会再次触发 `__setattr__`，导致无限递归！正确做法是使用 `super().__setattr__(name, value)` 或直接操作 `self.__dict__`。
+> 
+> *`self.__dict__` 是 Python 中每个对象实例（instance）自带的一个字典（dictionary）属性，用于存储该实例的所有可变属性（instance attributes）。*
 
 ---
