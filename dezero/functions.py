@@ -1,4 +1,5 @@
 import numpy as np
+from dezero.core import Variable
 from dezero.core import as_array
 from dezero.core import as_variable
 from dezero.core import Function
@@ -204,6 +205,18 @@ def sigmoid_simple(x):
 	y = 1 / (1 + exp(-x))
 	return y
 
+class ReLU(Function):
+	def forward(self, x):
+		return np.maximum(x, 0.0)
+	def backward(self, gy):
+		x, = self.inputs
+		mask = x.data > 0
+		gx = gy * mask
+		return gx 
+
+def relu(x):
+	return ReLU()(x)
+
 class GetItem(Function):
 	def __init__(self, slices):	# 切片参数 需要是 list 或者 np.ndarray 
 		self.slices = slices
@@ -316,3 +329,14 @@ class SoftmaxCrossEntropy(Function):
 		return gx
 def softmax_cross_entropy(x, t):
 	return SoftmaxCrossEntropy()(x, t)
+
+
+#*========================
+#*		accuracy
+#*========================
+def accuracy(y, t):
+	y, t = as_variable(y), as_variable(t)
+	pred = y.data.argmax(axis = 1).reshape(t.shape)	# 确保形状一致
+	result = (pred == t.data)	# bool 类型
+	acc = result.mean()
+	return Variable(as_array(acc))

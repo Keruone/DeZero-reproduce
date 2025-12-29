@@ -92,7 +92,7 @@ class Variable:
 		if self.data is None:
 			return 'Variable(None)'
 		p = str(self.data).replace('\n', '\n' + ' ' * 9)
-		return 'Variable(' + p + ')\n'
+		return 'Variable(' + p + ')'
 	
 	def set_creator(self, func):	
 		"""用于指定父级，即是哪个函数计算得到的它，用于调用反向传播"""
