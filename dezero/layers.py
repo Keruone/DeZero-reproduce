@@ -4,6 +4,7 @@ import numpy as np
 import dezero.functions as F
 from dezero.core import Parameter
 from dezero import cuda 
+from dezero.utils import pair
 
 class Layer:
 	def __init__(self):
@@ -105,7 +106,7 @@ class Linear(Layer):
 
 
 #*==========================================================================================================================================
-#*									Codes behiend here are copied from original code
+#*						Codes behiend here are copied from original code
 #*==========================================================================================================================================
 
 class Conv2d(Layer):
