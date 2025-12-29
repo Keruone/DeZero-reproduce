@@ -20,7 +20,7 @@ test_set = dezero.datasets.MNIST(train=False)
 train_loader = dezero.DataLoader(train_set, batch_size)
 test_loader = dezero.DataLoader(test_set, batch_size, shuffle=False)
 
-model = MLP([hidden_size, hidden_size, 10], activation=F.relu)
+model = MLP([hidden_size, hidden_size, 10], activation=F.relu)	# 在 models.MLP 中修改了前向传播的内容，以测试dropout
 optimizer = optimizers.SGD().setup(model)
 
 if dezero.cuda.gpu_enable:

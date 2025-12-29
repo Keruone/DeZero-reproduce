@@ -184,15 +184,15 @@ def get_file(url, file_name=None):
 # =============================================================================
 # others		copied from Dezero origin code
 # =============================================================================
-def get_deconv_outsize(size, k, s, p):
+def get_deconv_outsize(size, k, s, p):			# 计算某一维度（H or W）卷积输入的大小
     return s * (size - 1) + k - 2 * p
 
 
-def get_conv_outsize(input_size, kernel_size, stride, pad):
+def get_conv_outsize(input_size, kernel_size, stride, pad):		# 计算某一维度（H or W）卷积输出的大小
     return (input_size + pad * 2 - kernel_size) // stride + 1
 
 
-def pair(x):
+def pair(x):	# 无论时单个整数还是 2个参数的tuple， 都统一返回为 2个参数的 tuple
     if isinstance(x, int):
         return (x, x)
     elif isinstance(x, tuple):

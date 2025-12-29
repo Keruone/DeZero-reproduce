@@ -76,8 +76,13 @@ class Variable:
 	def T(self):
 		return dezero.functions.transpose(self)
 	
-	def transpose(self):
-		return dezero.functions.transpose(self)
+	def transpose(self, *axes):
+		if len(axes) == 0:
+			axes = None
+		elif len(axes) == 1:
+			if isinstance(axes[0], (tuple, list)) or axes[0] is None:
+				axes = axes[0]
+		return dezero.functions.transpose(self, axes)
 	
 	def reshape(self, *shape):	# 接收可变参数作为shape
 		if len(shape) == 1 and isinstance(shape[0], (tuple, list)):	# 由于 *shape 无论输入几个参数都会封装为tuple，所以判断要取出元素
@@ -109,6 +114,9 @@ class Variable:
 		# 	孩子知道自己是谁的孩子（creator），并自动知道自己的辈分（generation = parent.gen + 1）
 		# 	而不是父母强行给孩子贴标签
 	
+	def unchain(self):
+		self.creator = None
+
 	def clear_grad(self):
 		self.grad = None
 
@@ -155,6 +163,16 @@ class Variable:
 					if not retain_grad:
 						for output in f.outputs:
 							output().grad = None	# step 18 如果需要梯度就删除
+							
+	def unchain_backward(self):
+		if self.creator is not None:
+			funcs = [self.creator]
+			while funcs:
+				f = funcs.pop()
+				for x in f.inputs:
+					if x.creator is not None:
+						funcs.append(x.creator)
+						x.unchain()
 
 class Parameter(Variable):
 	pass

@@ -10,6 +10,7 @@ if is_simple_core:
 	from dezero.core_simple import setup_variable
 else:
 	from dezero.core import Variable
+	from dezero.core import Parameter
 	from dezero.core import Function
 	from dezero.core import using_config
 	from dezero.core import no_grad
@@ -22,10 +23,12 @@ else:
 	from dezero.models import Model
 	from dezero.datasets import Dataset
 	from dezero.dataloaders import DataLoader
+	from dezero.dataloaders import SeqDataLoader
 
 	import dezero.datasets
 	import dezero.dataloaders
 	import dezero.optimizers
+	import dezero.functions_conv
 	import dezero.functions
 	import dezero.layers
 	import dezero.utils

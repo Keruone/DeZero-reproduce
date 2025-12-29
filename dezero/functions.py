@@ -1,12 +1,7 @@
 import numpy as np
 import dezero
-from dezero.core import Variable
-from dezero.core import as_array
-from dezero.core import as_variable
-from dezero.core import Function
-from dezero.core import log
-from dezero import utils
-from dezero import cuda
+from dezero.core import Function, Variable, as_array, as_variable, log
+from dezero import utils, cuda
 
 class Sin(Function):
 	def forward(self, x):
@@ -101,8 +96,8 @@ class Transpose(Function):		# step38: 支持轴transpose的代码 如 0,1,2,3 ->
         inv_axes = tuple(xp.argsort([ax % axes_len for ax in self.axes]))
         return transpose(gy, inv_axes)
 	
-def transpose(x):
-	return Transpose()(x)
+def transpose(x, axes=None):
+	return Transpose(axes)(x)
 
 
 class Sum(Function):
@@ -181,7 +176,7 @@ class Linear(Function):
 		x, W, b = self.inputs
 		gx = matmul(gy, W.T)
 		gW = matmul(x.T, gy)
-		gb = None if b is None else sum_to(gy, b.shape)	# 这里 b要给它 sum_to 变形
+		gb = None if b.data is None else sum_to(gy, b.shape)	# 这里 b要给它 sum_to 变形
 		return gx, gW, gb
 
 
@@ -382,3 +377,23 @@ def accuracy(y, t):
     result = (pred == t.data)
     acc = result.mean()
     return Variable(as_array(acc))
+
+# =============================================================================
+# conv2d / col2im / im2col / basic_math
+# =============================================================================
+from dezero.functions_conv import conv2d
+from dezero.functions_conv import deconv2d
+from dezero.functions_conv import conv2d_simple
+from dezero.functions_conv import im2col
+from dezero.functions_conv import col2im
+from dezero.functions_conv import pooling_simple
+from dezero.functions_conv import pooling
+from dezero.functions_conv import average_pooling
+from dezero.core import add
+from dezero.core import sub
+from dezero.core import rsub
+from dezero.core import mul
+from dezero.core import div
+from dezero.core import neg
+from dezero.core import pow
+
