@@ -2,6 +2,7 @@ import weakref
 import numpy as np
 import dezero.functions as F
 from dezero.core import Parameter
+from dezero import cuda 
 
 class Layer:
 	def __init__(self):
@@ -21,6 +22,14 @@ class Layer:
 		self.outputs = [weakref.ref(y) for y in outputs]
 		return outputs if len(outputs) > 1 else outputs[0]
 	
+	def to_cpu(self):		#* Step 52: Support Cupy with cuda: New function
+		for param in self.params():
+			param.to_cpu()
+			
+	def to_gpu(self):		#* Step 52: Support Cupy with cuda: New function
+		for param in self.params():
+			param.to_gpu()
+			
 	def forward(self, inputs):
 		raise NotImplementedError()
 	
@@ -52,13 +61,14 @@ class Linear(Layer):
 		else:
 			self.b = Parameter(np.zeros(out_size, dtype=dtype), name = 'b')
 
-	def _init_W(self):
+	def _init_W(self, xp=np):		#* Step 52: Support Cupy with cuda: Add arg xp(default np)
 		I, O = self.in_size, self.out_size
-		self.W.data = np.random.randn(I, O).astype(self.dtype) * np.sqrt(1 / I)
+		self.W.data = xp.random.randn(I, O).astype(self.dtype) * xp.sqrt(1 / I)	#* Step 52: Support Cupy with cuda: Change `np` to `xp`
 
 	def forward(self, x):
 		# 如果没初始化 W， 那么在传播时初始化
 		if self.W.data is None:
 			self.in_size = x.shape[1]	# 不能 size，size表示全部的元素个数 shape第一个元素表示的是行数，我们要的是第二个元素，表示列数
-			self._init_W()
+			xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Create W base x
+			self._init_W(xp)
 		return F.linear(x, self.W, self.b)

@@ -1,9 +1,6 @@
 # 此处由于不是本书的重点，所以就直接 cv 过来了
 import numpy as np
-try:
-    import Image
-except ImportError:
-    from PIL import Image
+from PIL import Image
 from dezero.utils import pair
 
 
@@ -152,5 +149,5 @@ ToFloat = AsType
 
 
 class ToInt(AsType):
-    def __init__(self, dtype=np.int):
+    def __init__(self, dtype=int):	# 原来是 np.int
         self.dtype = dtype

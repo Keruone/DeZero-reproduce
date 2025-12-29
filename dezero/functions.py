@@ -5,10 +5,12 @@ from dezero.core import as_variable
 from dezero.core import Function
 from dezero.core import log
 from dezero import utils
+from dezero import cuda
 
 class Sin(Function):
 	def forward(self, x):
-		return np.sin(x)
+		xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+		return xp.sin(x)				#* Step 52: Support Cupy with cuda: change `np` to `xp`
 	
 	def backward(self, gy):
 		x, = self.inputs
@@ -20,7 +22,8 @@ def sin(x):
 
 class Cos(Function):
 	def forward(self, x):
-		return np.cos(x)
+		xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+		return xp.cos(x)				#* Step 52: Support Cupy with cuda: change `np` to `xp`
 	
 	def backward(self, gy):
 		x, = self.inputs
@@ -32,7 +35,8 @@ def cos(x):
 
 class Tanh(Function):
 	def forward(self, x):
-		return np.tanh(x)
+		xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+		return xp.tanh(x)
 	
 	def backward(self, gy):	# tan(x)的求导是 1-y^2，所以提取outputs
 		y = self.outputs[0]()	# output 是 weakref，所以要加()
@@ -44,7 +48,8 @@ def tanh(x):
 
 class Exp(Function):
 	def forward(self, x):
-		return np.exp(x)
+		xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+		return xp.exp(x)
 	def backward(self, gy):
 		y = self.outputs[0]()  # weakref,直接使用计算结果，少计算一次
 		gx = gy * y
@@ -91,7 +96,8 @@ class Transpose(Function):		# step38: 支持轴transpose的代码 如 0,1,2,3 ->
             return transpose(gy)
 
         axes_len = len(self.axes)
-        inv_axes = tuple(np.argsort([ax % axes_len for ax in self.axes]))
+        xp = cuda.get_array_module(gy)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+        inv_axes = tuple(xp.argsort([ax % axes_len for ax in self.axes]))
         return transpose(gy, inv_axes)
 	
 def transpose(x):
@@ -121,7 +127,8 @@ class BroadcastTo(Function):
 	
 	def forward(self, x):
 		self.x_shape = x.shape
-		y = np.broadcast_to(x, self.shape)
+		xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+		y = xp.broadcast_to(x, self.shape)
 		return y
 	
 	def backward(self, gy):
@@ -152,7 +159,7 @@ def sum_to(x, shape):
 
 class MatMul(Function):
 	def forward(self, x, W):
-		return np.dot(x,W)
+		return x.dot(W)
 	
 	def backward(self, gy):
 		x,W = self.inputs
@@ -189,7 +196,8 @@ def linear_simple(x, W, b = None):
 
 class Sigmoid(Function):
 	def forward(self, x):
-		y = 1 / (1 + np.exp(-x))
+		xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+		y = 1 / (1 + xp.exp(-x))
 		return y
 		
 	def backward(self, gy):
@@ -207,7 +215,8 @@ def sigmoid_simple(x):
 
 class ReLU(Function):
 	def forward(self, x):
-		return np.maximum(x, 0.0)
+		xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+		return xp.maximum(x, 0.0)
 	def backward(self, gy):
 		x, = self.inputs
 		mask = x.data > 0
@@ -237,8 +246,12 @@ class GetItemGrad(Function):
 		self.slices = slices
 		self.x_shape = x_shape
 	def forward(self, gy):	# 前向传播处理的都是numpy的数据
-		gx = np.zeros(self.x_shape)
-		np.add.at(gx, self.slices, gy)	# 原地（in-place）按索引批量累加 #* np.add.at() 是 NumPy 的 add ufunc（通用函数）的原子化原地累加方法，核心作用是：根据指定的索引（slices），把 gy 的值原地累加到 gx 对应的位置上（支持重复索引，重复索引会多次累加，而非覆盖）。
+		xp = cuda.get_array_module(gy)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+		gx = xp.zeros(self.x_shape)
+		if xp is np:
+			np.add.at(gx, self.slices, gy)
+		else:
+			xp.scatter_add(gx, self.slices, gy)
 		return gx
 	def backward(self, x):
 		return get_item(x, self.slices)
@@ -247,7 +260,8 @@ class Softmax(Function):
 	def __init__(self, axis):
 		self.axis = axis
 	def forward(self, x):
-		y = np.exp(x)
+		xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+		y = xp.exp(x)
 		sum_y = y.sum(axis = self.axis, keepdims=True)
 		return y / sum_y
 	def backward(self, gy):
@@ -271,7 +285,8 @@ class Clip(Function):
         self.x_max = x_max
 
     def forward(self, x):
-        y = np.clip(x, self.x_min, self.x_max)	# np.clip 将数组的所有元素限制在 [min, max] 区间内
+        xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
+        y = xp.clip(x, self.x_min, self.x_max)	# np.clip 将数组的所有元素限制在 [min, max] 区间内
         return y
 
     def backward(self, gy):
@@ -302,28 +317,31 @@ def mean_squared_error(x0, x1):
 	return MeanSquaredError()(x0, x1)
 
 def softmax_cross_entropy_simple(x, t):	# 此处t不是one-hot
+	xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
 	x, t = as_variable(x), as_variable(t)
 	N = x.shape[0]
 	p = softmax(x)
 	# print(type(p.data))
 	p = clip(p, 1e-15, 1.0)  # To avoid log(0)
 	log_p = log(p)
-	tlog_p = log_p[np.arange(N), t.data]
+	tlog_p = log_p[xp.arange(N), t.data]
 	y = -1 * sum(tlog_p) / N
 	return y
 
 class SoftmaxCrossEntropy(Function):
 	def forward(self, x, t):
+		xp = cuda.get_array_module(x)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
 		N = x.shape[0]
 		log_z = utils.logsumexp(x, axis=1)	# 计算呢 log(sum(exp(x))), 即公式的分母
 		log_p = x - log_z					# 分子先exp再log等于本身，然后使用log(a/b) = loga - logb
-		log_p = log_p[np.arange(N), t.ravel()]
-		y = -log_p.sum() / np.float32(N)
+		log_p = log_p[xp.arange(N), t.ravel()]
+		y = -log_p.sum() / xp.float32(N)
 		return y
 	def backward(self, gy):
+		xp = cuda.get_array_module(gy)	#* Step 52: Support Cupy with cuda: Use cuda function to checkout is `np` or `cp`
 		x, t = self.inputs
 		N, CLS_NUM = x.shape
-		t_onehot = np.eye(CLS_NUM, dtype=t.dtype)[t.data]	# 跟前文get_item 同样的特性
+		t_onehot = xp.eye(CLS_NUM, dtype=t.dtype)[t.data]	# 跟前文get_item 同样的特性
 		y = softmax(x)
 		gx = (y - t_onehot) / N
 		return gx
@@ -334,9 +352,19 @@ def softmax_cross_entropy(x, t):
 #*========================
 #*		accuracy
 #*========================
+# def accuracy(y, t):
+# 	y, t = as_variable(y), as_variable(t)
+# 	pred = y.data.argmax(axis = 1).reshape(t.shape)	# 确保形状一致
+# 	result = (pred == t.data)	# bool 类型
+# 	acc = result.mean()
+# 	return Variable(as_array(acc))
 def accuracy(y, t):
-	y, t = as_variable(y), as_variable(t)
-	pred = y.data.argmax(axis = 1).reshape(t.shape)	# 确保形状一致
-	result = (pred == t.data)	# bool 类型
-	acc = result.mean()
-	return Variable(as_array(acc))
+    """
+    [WAR] This function is not differentiable.
+    """
+    y, t = as_variable(y), as_variable(t)
+
+    pred = y.data.argmax(axis=1).reshape(t.shape)
+    result = (pred == t.data)
+    acc = result.mean()
+    return Variable(as_array(acc))

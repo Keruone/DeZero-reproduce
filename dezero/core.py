@@ -4,12 +4,11 @@ import weakref
 import contextlib
 import dezero
 
-# TODO step32: 实现高阶导数
-# 1. 将grad从数值，转换为 Variable 类型变量 -> 这样导数也可以自己求导
-# 2. 修改各种计算函数的反向传播，将 数值的计算，修改为 对变量的计算
-# 		（由于定义过 __xxx__ 所以可以直接运算）
-# 		（且Function的__call__会调用的是前向传播，所以运算不成问题）
-
+try:		#* Step 52: Support Cupy with cuda: New block of try
+	import cupy
+	array_types = (np.ndarray, cupy.ndarray)
+except ImportError:
+	array_types = (np.ndarray)
 # =================================================
 # Config
 # =================================================
@@ -45,7 +44,7 @@ class Variable:
 	__array_priority__ = 200	# 设置实例的 array 运算优先级，要高于 numpy的实例，这样才可以运算
 	def __init__(self, data, name = None):
 		if data is not None:
-			if not isinstance(data, np.ndarray):
+			if not isinstance(data, array_types):	#* Step 52: Support Cupy with cuda: Change np.ndarray to array_types
 				raise TypeError('{} is not supported'.format(type(data))) 
 
 		self.data = data
@@ -110,10 +109,19 @@ class Variable:
 	def clear_grad(self):
 		self.grad = None
 
+	def to_cpu(self):										#* Step 52: Support Cupy with cuda: New function
+		if self.data is not None:
+			self.data = dezero.cuda.as_numpy(self.data)
+
+	def to_gpu(self):										#* Step 52: Support Cupy with cuda: New function
+		if self.data is not None:
+			self.data = dezero.cuda.as_cupy(self.data)
+	
 	def backward(self,retain_grad = False, create_graph = False):		# step 18: 只保留端侧数据的梯度，以减少memory使用
 		"使用循环的方式实现 backward"
 		if self.grad is None:
-			self.grad = Variable(np.ones_like(self.data))											## step 32.1
+			xp = dezero.cuda.get_array_module(self.data)	#* Step 52: Support Cupy with cuda: Newline
+			self.grad = Variable(xp.ones_like(self.data))	#* Step 52: Support Cupy with cuda: Change `np` to `xp`
 		
 		funcs = []
 		seen_set = set()	#? 为什么set?  set 的成员判断效率远高于 list，且能天然保证 “元素唯一” 搜索效率：set=O(1) list=O(n)
@@ -148,9 +156,9 @@ class Variable:
 class Parameter(Variable):
 	pass
 
-def as_array(x):		# 处理标量为 np.ndarray 类型 #step 21 标量要先经过 as_array() 再经过 as_variable()
+def as_array(x, array_module = np):
 	if np.isscalar(x):
-		return np.array(x)
+		return array_module.array(x)
 	return x
 
 def as_variable(obj):	#假定是np.ndarray 或 Variable
@@ -218,7 +226,7 @@ class Add(Function):
 
 def add(x0, x1):
 	# x0 一般是调用add的var变量，x1可能是任何支持的变量
-	x1 = as_array(x1)	# as_array 仅对标量有用，将变量转换为np.ndarry，否则直接返回
+	x1 = as_array(x1, dezero.cuda.get_array_module(x0.data))	#* Step 52: Support Cupy with cuda
 	return Add()(x0, x1)
 
 class Mul(Function):
@@ -231,7 +239,7 @@ class Mul(Function):
 		return x1 * gy, x0 * gy
 
 def mul(x0, x1):
-	x1 = as_array(x1)
+	x1 = as_array(x1, dezero.cuda.get_array_module(x0.data))	#* Step 52: Support Cupy with cuda
 	return Mul()(x0, x1)
 
 class Neg(Function):
@@ -252,11 +260,11 @@ class Sub(Function):
 		return gy, -gy
 
 def sub(x0, x1):
-	x1 = as_array(x1)
+	x1 = as_array(x1, dezero.cuda.get_array_module(x0.data))	#* Step 52: Support Cupy with cuda
 	return Sub()(x0, x1)
 
 def rsub(x0, x1):
-	x1 = as_array(x1)
+	x1 = as_array(x1, dezero.cuda.get_array_module(x0.data))	#* Step 52: Support Cupy with cuda
 	return Sub()(x1, x0)
 
 class Div(Function):
@@ -270,11 +278,11 @@ class Div(Function):
 		return gx0, gx1
 
 def div(x0, x1):
-	x1 = as_array(x1)
+	x1 = as_array(x1, dezero.cuda.get_array_module(x0.data))	#* Step 52: Support Cupy with cuda
 	return Div()(x0, x1)
 
 def rdiv(x0, x1):
-	x1 = as_array(x1)
+	x1 = as_array(x1, dezero.cuda.get_array_module(x0.data))	#* Step 52: Support Cupy with cuda
 	return Div()(x1, x0)
 
 class Pow(Function):
@@ -288,11 +296,11 @@ class Pow(Function):
 		return gx0, gx1
 
 def pow(x0, x1):
-	x1 = as_array(x1)
+	x1 = as_array(x1, dezero.cuda.get_array_module(x0.data))	#* Step 52: Support Cupy with cuda
 	return Pow()(x0, x1)
 
 def rpow(x0, x1):
-	x1 = as_array(x1)
+	x1 = as_array(x1, dezero.cuda.get_array_module(x0.data))	#* Step 52: Support Cupy with cuda
 	return Pow()(x1, x0)
 
 class Log(Function):
@@ -327,7 +335,7 @@ def log(x, base = None):
 	if base is None:
 		return Log()(x)
 	else:
-		base = as_array(base)
+		base = as_array(base, dezero.cuda.get_array_module(x.data))	#* Step 52: Support Cupy with cuda
 		return Log_base()(base, x)
 
 def setup_variable():
