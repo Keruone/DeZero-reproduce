@@ -1,3 +1,4 @@
+import os
 import weakref
 import numpy as np
 import dezero.functions as F
@@ -22,6 +23,16 @@ class Layer:
 		self.outputs = [weakref.ref(y) for y in outputs]
 		return outputs if len(outputs) > 1 else outputs[0]
 	
+	def _flatten_params(self, params_dict, parent_key=""):	# 以便于扁平化的取出所有参数
+		for name in self._params:
+			obj = self.__dict__[name]
+			key = parent_key + '/' + name if parent_key else name
+			
+			if isinstance(obj, Layer):
+				obj._flatten_params(params_dict, parent_key=key)
+			else:
+				params_dict[key] = obj
+
 	def to_cpu(self):		#* Step 52: Support Cupy with cuda: New function
 		for param in self.params():
 			param.to_cpu()
@@ -44,6 +55,25 @@ class Layer:
 	def clear_grads(self):
 		for param in self.params():
 			param.clear_grad()
+	
+	def save_weights(self, path):
+		self.to_cpu()
+		params_dict = {}
+		self._flatten_params(params_dict)
+		array_dict = {key: param.data for key, param in params_dict.items() if param is not None}
+		try:
+			np.savez_compressed(path, **array_dict)
+		except (Exception, KeyboardInterrupt) as e:
+			if os.path.exists(path):	# 如果保存中失败了，先删干净文件，不要将保存了一半的文件落在这
+				os.ramove(path)
+			raise
+	
+	def load_weights(self, path):
+		npz = np.load(path)
+		params_dict = {}
+		self._flatten_params(params_dict)
+		for key, param in params_dict.items():
+			param.data = npz[key]
 
 class Linear(Layer):
 	def __init__(self, out_size, nobias = False, dtype = np.float32, in_size = None):
