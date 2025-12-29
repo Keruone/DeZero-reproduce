@@ -22,4 +22,5 @@ class MLP(Model):
 	def forward(self, x):
 		for l in self.layers[:-1]:
 			x = self.activation(l(x))
+			# x = self.activation(F.dropout(l(x)))	# 这里dropout 加入只是验证 Step54.py
 		return self.layers[-1](x)

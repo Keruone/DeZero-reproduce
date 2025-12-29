@@ -1,4 +1,5 @@
 import numpy as np
+import dezero
 from dezero.core import Variable
 from dezero.core import as_array
 from dezero.core import as_variable
@@ -348,6 +349,19 @@ class SoftmaxCrossEntropy(Function):
 def softmax_cross_entropy(x, t):
 	return SoftmaxCrossEntropy()(x, t)
 
+#*========================
+#*		dropout
+#*========================
+def dropout(x, dropout_ration = 0.5):
+	x = as_variable(x)
+	if dezero.Config.train:
+		xp = cuda.get_array_module(x)
+		mask = xp.random.rand(*x.shape) > dropout_ration
+		scale = xp.array(1.0 - dropout_ration).astype(x.dtype)
+		y = x * mask / scale
+		return y
+	else:
+		return x
 
 #*========================
 #*		accuracy

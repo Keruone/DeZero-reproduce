@@ -15,6 +15,7 @@ except ImportError:
 
 class Config:
 	enable_backprop = True
+	train = True
 
 @contextlib.contextmanager
 def using_config(name, value):
@@ -35,6 +36,8 @@ def no_grad():
 	"""搭配 with，简化写法"""
 	return using_config('enable_backprop', False)
 
+def test_mode():
+	return using_config('train', False)
 
 # =============================================================================
 # Variable / Function
