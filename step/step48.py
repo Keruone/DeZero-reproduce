@@ -10,7 +10,7 @@ import dezero.functions as F
 from dezero.models import MLP
 
 # Hyperparameters
-max_epoch = 300
+max_epoch = 3000
 batch_size = 30
 hidden_size = 10
 lr = 1.0
@@ -34,7 +34,7 @@ for epoch in range(max_epoch):
 
         y = model(batch_x)
         loss = F.softmax_cross_entropy(y, batch_t)
-        model.cleargrads()
+        model.clear_grads()
         loss.backward()
         optimizer.update()
 
